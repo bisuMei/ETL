@@ -1,0 +1,8 @@
+movies:
+    database:
+      dbname: movies
+      user: postgres
+      password: 1234
+      host: 127.0.0.1
+      port: 5432
+      options: -c search_path=content
