@@ -1,1 +1,1 @@
-*/1 * * * * python3 /load_data.py >> /logfile
+*/30 * * * * python3 app/load_data.py >> /logfile
