@@ -6,3 +6,7 @@ movies:
       host: 127.0.0.1
       port: 5432
       options: -c search_path=content
+elastic:
+    envs:
+      host: localhost
+      port: 9200

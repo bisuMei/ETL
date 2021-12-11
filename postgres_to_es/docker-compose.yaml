@@ -21,11 +21,6 @@ services:
       - 9200:9200
     networks:
       - elastic
-  cron:
-    container_name: cron
-    build:
-      context: ./app
-      dockerfile: Dockerfile
 
 volumes:
   data01:

@@ -1,7 +1,13 @@
 """Service to load data from postgres to elasticsearch."""
 import logging
-from collections import defaultdict
 
+from collections import defaultdict
+from datetime import date
+from typing import List, Tuple
+
+from backoff import backoff
+
+from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
 from elastic_schema import index_data
@@ -18,7 +24,7 @@ from state_saver import JsonFileStorage, State
 
 logger = logging.getLogger()
 
-BASE_STATE = '1900-06-16 20:14:09.309735 +00:00'
+BASE_STATE = date.min.strftime('%Y-%m-%d %X')
 
 
 class PostgresLoaderService:
@@ -32,7 +38,8 @@ class PostgresLoaderService:
         self.storage = JsonFileStorage('state_config.json')
         self.state_loader = State(self.storage)
 
-    def load_data(self):
+    @backoff()
+    def load_data(self) -> Tuple[List[MovieData], List[PersonFilm]]:
         """Load raw data from postgres."""
 
         genres_state = self.state_loader.get_state('genres_state')
@@ -99,7 +106,8 @@ class ElasticSaverService:
         self.storage = JsonFileStorage('state_config.json')
         self.state_loader = State(self.storage)
 
-    def create_index(self, es, index_name):
+    @backoff()
+    def create_index(self, es: Elasticsearch, index_name: str) -> bool:
         """Create index if not exist."""
 
         created = False
@@ -115,14 +123,15 @@ class ElasticSaverService:
         finally:
             return created
 
-    def store_record(self, es, index_name, record):
+    @backoff()
+    def store_record(self, es: Elasticsearch, index_name: str, record: dict):
         try:
             outcome = es.index(index=index_name, document=record)
             return outcome
         except Exception as ex:
             logger.exception('Error in indexing data: %s', str(ex))
 
-    def gendata(self, index_name, docs):
+    def gendata(self, index_name: str, docs: List[dict]) -> dict:
         for doc in docs:
             yield {
                 "_index": index_name,
@@ -130,7 +139,8 @@ class ElasticSaverService:
                 "_source": doc
             }
 
-    def bulk_store(self, es, index_name, list_of_record, states: dict = None) -> None:
+    @backoff()
+    def bulk_store(self, es: Elasticsearch, index_name: str, list_of_record: List[dict], states: dict = None) -> None:
         try:
             bulk(es, self.gendata(index_name, list_of_record))
         except Exception as ex:
@@ -146,32 +156,31 @@ class TransformDataService:
 
     def transform_data_to_elastic(
         self,
-        film_work_data,
-        person_film_data,
-    ):
+        film_work_data: List[MovieData],
+        person_film_data: List[PersonFilm],
+    ) -> List[dict]:
         """Transform raw data from postgres to elastic format."""
 
         person_data = defaultdict(list)
         result = []
         for pers in person_film_data:
-            person_info = {}
-            person_info['id'] = pers.person_id
-            person_info['role'] = pers.role
-            person_info['full_name'] = pers.full_name
+            person_info = {'id': pers.person_id, 'role': pers.role, 'full_name': pers.full_name}
             person_data[pers.film_id].append(person_info)
 
         for film in film_work_data:
-            movie = {}
             writers = []
             actors = []
             actors_names = []
             writers_names = []
 
-            movie['id'] = film.id
-            movie['imdb_rating'] = film.rating
-            movie['description'] = film.description
-            movie['title'] = film.title
-            movie['genre'] = film.genres
+            movie = {
+                'id': film.id,
+                'imdb_rating': film.rating,
+                'description': film.description,
+                'title': film.title,
+                'genre': film.genres,
+            }
+
             if persons := person_data.get(film.id):
                 for person in persons:
                     role = person['role']

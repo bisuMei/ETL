@@ -1,4 +1,5 @@
 import logging.config
+from os import path
 
 from elasticsearch import Elasticsearch
 from psycopg2 import connect
@@ -13,7 +14,8 @@ logger = logging.getLogger()
 
 @backoff()
 def connect_elastic():
-    es = Elasticsearch([{'host': 'localhost', 'port': '9200'}])
+    es_dsn = yamjam()['elastic']['envs']
+    es = Elasticsearch([es_dsn])
     if es.ping():
         logger.info("Success connect to elastic")
         return es
@@ -35,8 +37,8 @@ def connect_to_postgres():
 
 
 if __name__ == '__main__':
-
-    logging.config.fileConfig('logging.conf')
+    log_file_path = path.join(path.dirname(path.abspath(__file__)), 'logging.conf')
+    logging.config.fileConfig(log_file_path)
 
     pg_conn = connect_to_postgres()
     postgres_service = PostgresLoaderService(pg_conn)
