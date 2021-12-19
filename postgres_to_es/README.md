@@ -4,4 +4,4 @@ Make build:
 
 To run container with cron job:
 
-    docker run --network=host -p 8009:8009 cron-app
+    docker run --network=movie_proj -p 8009:8009 cron-app

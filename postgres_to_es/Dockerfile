@@ -12,14 +12,16 @@ RUN pip install --upgrade pip
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-RUN apt-get update && apt-get -y install cron vim
+RUN apt-get update && apt-get -y install cron
 COPY ./crontab /etc/cron.d/crontab
 
 RUN chmod 0644 /etc/cron.d/crontab
 RUN /usr/bin/crontab /etc/cron.d/crontab
 
+COPY ./entrypoint.sh .
+RUN sed -i 's/\r$//g' /usr/src/app/entrypoint.sh
+RUN chmod +x /usr/src/app/entrypoint.sh
+
 COPY . .
 
-RUN crontab crontab
-
-CMD ["cron", "-f"]
+ENTRYPOINT ["/usr/src/app/entrypoint.sh"]

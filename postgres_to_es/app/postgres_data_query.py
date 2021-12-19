@@ -54,3 +54,20 @@ filmworks_additional_query = """
              WHERE fw.id IN {filmworks_ids}
              GROUP BY fw.id;
         """
+
+genres_data_query = """
+                    SELECT id, name, description, updated_at
+                    FROM content.genre
+                    WHERE updated_at > '{0}'
+                    ORDER BY updated_at
+                    LIMIT 100;
+                """
+
+persons_data_query = """
+                    SELECT pfw.person_id, p.full_name, pfw.role, p.updated_at
+                    FROM content.person_film_work pfw
+                    INNER JOIN content.person p ON (pfw.person_id = p.id)
+                    WHERE p.updated_at > '{0}'
+                    ORDER BY p.updated_at
+                    LIMIT 100;
+                """

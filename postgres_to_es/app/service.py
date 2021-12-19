@@ -10,16 +10,17 @@ from backoff import backoff
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
-from elastic_schema import index_data
 from postgres_data_query import (
     filmworks_additional_query,
     filmworks_by_genre,
     filmworks_data_query,
     filmworks_persons_query,
     genres_query,
-    persons_query
+    genres_data_query,
+    persons_query,
+    persons_data_query,
 )
-from postgres_schemas import MovieData, PersonFilm
+from postgres_schemas import MovieData, PersonFilm, GenreData, PersonsData, FilmworkSchema, GenreSchema, PersonSchema
 from state_saver import JsonFileStorage, State
 
 logger = logging.getLogger()
@@ -39,7 +40,7 @@ class PostgresLoaderService:
         self.state_loader = State(self.storage)
 
     @backoff()
-    def load_data(self) -> Tuple[List[MovieData], List[PersonFilm]]:
+    def load_filmworks_data(self) -> Tuple[List[MovieData], List[PersonFilm]]:
         """Load raw data from postgres."""
 
         genres_state = self.state_loader.get_state('genres_state')
@@ -98,6 +99,36 @@ class PostgresLoaderService:
 
         return film_work_data, person_film_data
 
+    def load_genres_data(self):
+        """Load genres data from postgres."""
+        genres_data_state = self.state_loader.get_state('genres_data_state')
+        if not genres_data_state:
+            genres_data_state = BASE_STATE
+        self.cursor.execute(genres_data_query.format(genres_data_state))
+        raw_genres_data = self.cursor.fetchall()
+        if raw_genres_data:
+            new_genre_data_state = str(raw_genres_data[0][-1])
+            final_genre_data_state = str(raw_genres_data[-1][-1])
+            self.states_after_save['genres_data_state'] = final_genre_data_state
+            self.state_loader.set_state('genres_data_state', new_genre_data_state)
+
+        return [GenreData(*item) for item in raw_genres_data]
+
+    def load_persons_data(self):
+        """Load persons data from postgres."""
+        persons_data_state = self.state_loader.get_state('persons_data_state')
+        if not persons_data_state:
+            persons_data_state = BASE_STATE
+        self.cursor.execute(persons_data_query.format(persons_data_state))
+        raw_persons_data = self.cursor.fetchall()
+        if raw_persons_data:
+            new_persons_state = str(raw_persons_data[0][-1])
+            final_persons_data_state = str(raw_persons_data[-1][-1])
+            self.states_after_save['persons_data_state'] = final_persons_data_state
+            self.state_loader.set_state('persons_data_state', new_persons_state)
+
+        return [PersonsData(*item) for item in raw_persons_data]
+
 
 class ElasticSaverService:
     """Save data from postgres to elastic."""
@@ -107,7 +138,7 @@ class ElasticSaverService:
         self.state_loader = State(self.storage)
 
     @backoff()
-    def create_index(self, es: Elasticsearch, index_name: str) -> bool:
+    def create_index(self, es: Elasticsearch, index_name: str, index_settings: dict) -> bool:
         """Create index if not exist."""
 
         created = False
@@ -115,7 +146,7 @@ class ElasticSaverService:
         try:
             if not es.indices.exists(index=index_name):
                 # Ignore 400 means to ignore "Index Already Exist" error.
-                es.indices.create(index=index_name, ignore=400, body=index_data)
+                es.indices.create(index=index_name, ignore=400, body=index_settings)
                 logger.info('Index created')
             created = True
         except Exception as ex:
@@ -154,7 +185,7 @@ class ElasticSaverService:
 class TransformDataService:
     """Data transformer from raw postgres to elastic loader."""
 
-    def transform_data_to_elastic(
+    def transform_filmworks_data(
         self,
         film_work_data: List[MovieData],
         person_film_data: List[PersonFilm],
@@ -198,6 +229,29 @@ class TransformDataService:
             movie['writers_names'] = writers_names
             if not movie.get('director'):
                 movie['director'] = None
-            result.append(movie)
+            result.append(FilmworkSchema.parse_obj(movie).dict())
 
+        return result
+
+    def transform_genres_data(self, genres_data: List[GenreData]) -> List[dict]:
+        """Transform genres data to load to elastic."""
+
+        result = []
+        for genre in genres_data:
+            genres_info = {'id': genre.id, 'name': genre.name, 'description': genre.description}
+            result.append(GenreSchema.parse_obj(genres_info).dict())
+        return result
+
+    def transform_persons_data(self, persons_data: List[PersonsData]) -> List[dict]:
+        """Transform persons data to load to elastic."""
+
+        result = []
+        person_roles = defaultdict(set)
+        for person in persons_data:
+            person_roles[person.id].add(person.role)
+
+        for person in persons_data:
+            roles = list(person_roles.get(person.id))
+            persons_info = {'id': person.id, 'full_name': person.full_name, 'role': roles}
+            result.append(PersonSchema.parse_obj(persons_info).dict())
         return result

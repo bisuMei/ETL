@@ -22,8 +22,8 @@ def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
         for sleep in sleep_generator:
             try:
                 return target()
-            except Exception:
-                logger.info('Service unavailable. will retry...')
+            except Exception as exc:
+                logger.info('Service unavailable. will retry. Exception %s', str(exc))
                 time.sleep(sleep)
 
         raise ValueError("Sleep generator stopped yielding sleep values.")
