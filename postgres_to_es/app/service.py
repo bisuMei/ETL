@@ -39,6 +39,10 @@ class PostgresLoaderService:
         self.storage = JsonFileStorage('state_config.json')
         self.state_loader = State(self.storage)
 
+    def _make_valid_query_values(self, item: tuple) -> tuple:
+        """Make tuple without one value comma for query."""
+        return (item[0], '') if len(item) == 1 else item
+
     @backoff()
     def load_filmworks_data(self) -> Tuple[List[MovieData], List[PersonFilm]]:
         """Load raw data from postgres."""
@@ -52,6 +56,7 @@ class PostgresLoaderService:
         genres_ids = tuple([genre_id[0] for genre_id in genres_data])
 
         if genres_ids:
+            genres_ids = self._make_valid_query_values(genres_ids)
             new_genre_state = str(genres_data[0][1])
             final_genre_state = str(genres_data[-1][1])
             self.states_after_save['genres_state'] = final_genre_state
@@ -70,6 +75,8 @@ class PostgresLoaderService:
         persons_ids = tuple([person_id[0] for person_id in persons_data])
 
         if persons_ids and filmworks_ids_changed_genres:
+            persons_ids = self._make_valid_query_values(persons_ids)
+            filmworks_ids_changed_genres = self._make_valid_query_values(filmworks_ids_changed_genres)
             new_person_state = str(persons_data[0][1])
             final_person_state = str(persons_data[-1][1])
             self.states_after_save['persons_state'] = final_person_state
@@ -79,6 +86,7 @@ class PostgresLoaderService:
                 filmworks_data_query.format(persons_ids=persons_ids, filmworks_ids=filmworks_ids_changed_genres),
             )
         elif persons_ids:
+            persons_ids = self._make_valid_query_values(persons_ids)
             new_person_state = str(persons_data[0][1])
             final_person_state = str(persons_data[-1][1])
             self.states_after_save['persons_state'] = final_person_state
@@ -93,6 +101,7 @@ class PostgresLoaderService:
         final_filmworks_ids = tuple(set(filmworks_ids_changed_genres + filmworks_ids_changed_persons))
 
         if final_filmworks_ids:
+            final_filmworks_ids = self._make_valid_query_values(final_filmworks_ids)
             self.cursor.execute(filmworks_additional_query.format(filmworks_ids=final_filmworks_ids))
         additional_film_data = self.cursor.fetchall()
         film_work_data = [MovieData(*item) for item in additional_film_data]
