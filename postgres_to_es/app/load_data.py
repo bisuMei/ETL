@@ -65,9 +65,9 @@ def load_from_postgres_to_elastic(pg_conn, es):
         service.bulk_store(es, 'genres', genres_data_to_elastic, postgres_service.states_after_save)
     while True:
         persons_data_from_postgres = postgres_service.load_persons_data()
-        persons_data_to_elastic = transform_service.transform_persons_data(persons_data_from_postgres)
-        if not persons_data_to_elastic:
+        if not persons_data_from_postgres:
             break
+        persons_data_to_elastic = transform_service.transform_persons_data(*persons_data_from_postgres)
         logger.info("Get persons data from postgres. Transformed to save to elastic..")
         service.bulk_store(es, 'persons', persons_data_to_elastic, postgres_service.states_after_save)
 

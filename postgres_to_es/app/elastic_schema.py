@@ -232,6 +232,10 @@ persons_index_schema = {
                 "type": "text",
                 "analyzer": "ru_en"
             },
+            "film_ids": {
+                "type": "text",
+                "analyzer": "ru_en"
+            }
         }
     }
 }

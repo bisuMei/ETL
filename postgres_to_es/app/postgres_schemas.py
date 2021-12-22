@@ -72,6 +72,18 @@ class PersonsData:
     updated_at: Optional[datetime]
 
 
+@dataclass
+class FilmsByPerson:
+
+    __slots__ = (
+        'id',
+        'film_ids'
+    )
+
+    id: str
+    film_ids: List[str]
+
+
 class InstanceSchema(BaseModel):
 
     id: str
@@ -104,3 +116,4 @@ class PersonSchema(BaseModel):
     id: str
     full_name: str
     role: List[str]
+    film_ids: List[str]

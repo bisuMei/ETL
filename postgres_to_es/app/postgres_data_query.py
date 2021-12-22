@@ -71,3 +71,10 @@ persons_data_query = """
                     ORDER BY p.updated_at
                     LIMIT 100;
                 """
+
+films_by_person_query = """
+                SELECT pfw.person_id, ARRAY_AGG(DISTINCT pfw.film_work_id) AS film_ids
+                FROM content.person_film_work pfw
+                WHERE pfw.person_id IN {persons_ids}
+                GROUP BY pfw.person_id;
+            """

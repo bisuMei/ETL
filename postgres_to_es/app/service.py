@@ -13,6 +13,7 @@ from elasticsearch.helpers import bulk
 from postgres_data_query import (
     filmworks_additional_query,
     filmworks_by_genre,
+    films_by_person_query,
     filmworks_data_query,
     filmworks_persons_query,
     genres_query,
@@ -20,7 +21,16 @@ from postgres_data_query import (
     persons_query,
     persons_data_query,
 )
-from postgres_schemas import MovieData, PersonFilm, GenreData, PersonsData, FilmworkSchema, GenreSchema, PersonSchema
+from postgres_schemas import (
+    MovieData,
+    PersonFilm,
+    GenreData,
+    PersonsData,
+    FilmworkSchema,
+    GenreSchema,
+    PersonSchema,
+    FilmsByPerson,
+)
 from state_saver import JsonFileStorage, State
 
 logger = logging.getLogger()
@@ -130,13 +140,23 @@ class PostgresLoaderService:
             persons_data_state = BASE_STATE
         self.cursor.execute(persons_data_query.format(persons_data_state))
         raw_persons_data = self.cursor.fetchall()
-        if raw_persons_data:
+        persons_ids = tuple([person_id[0] for person_id in raw_persons_data])
+
+        if persons_ids:
             new_persons_state = str(raw_persons_data[0][-1])
             final_persons_data_state = str(raw_persons_data[-1][-1])
             self.states_after_save['persons_data_state'] = final_persons_data_state
             self.state_loader.set_state('persons_data_state', new_persons_state)
 
-        return [PersonsData(*item) for item in raw_persons_data]
+            persons_ids = self._make_valid_query_values(persons_ids)
+            self.cursor.execute(films_by_person_query.format(persons_ids=persons_ids))
+
+            raw_films_by_persons = self.cursor.fetchall()
+            films_ids_by_person = [FilmsByPerson(*item) for item in raw_films_by_persons]
+
+            return [PersonsData(*item) for item in raw_persons_data], films_ids_by_person
+
+        return
 
 
 class ElasticSaverService:
@@ -251,16 +271,26 @@ class TransformDataService:
             result.append(GenreSchema.parse_obj(genres_info).dict())
         return result
 
-    def transform_persons_data(self, persons_data: List[PersonsData]) -> List[dict]:
+    def transform_persons_data(
+        self,
+        persons_data: List[PersonsData],
+        films_by_person: List[FilmsByPerson],
+    ) -> List[dict]:
         """Transform persons data to load to elastic."""
 
         result = []
+        person_films = {person_films.id: person_films.film_ids for person_films in films_by_person}
         person_roles = defaultdict(set)
         for person in persons_data:
             person_roles[person.id].add(person.role)
 
         for person in persons_data:
             roles = list(person_roles.get(person.id))
-            persons_info = {'id': person.id, 'full_name': person.full_name, 'role': roles}
+            persons_info = {
+                'id': person.id,
+                'full_name': person.full_name,
+                'role': roles,
+                'film_ids': person_films.get(person.id, []),
+            }
             result.append(PersonSchema.parse_obj(persons_info).dict())
         return result
